@@ -1,0 +1,53 @@
+name: Publish BluePeak Operator Latest
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'mirror/source.txt'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bluepeak-operator-public-release
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download validated private artifact mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="$(tr -d '\r\n' < mirror/source.txt)"
+          test -n "$url"
+          curl --fail --location --retry 3 --retry-delay 2 \
+            --output BluePeak.Operator-latest.zip "$url"
+          unzip -t BluePeak.Operator-latest.zip >/dev/null
+
+      - name: Publish stable public download
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="latest"
+          asset="BluePeak.Operator-latest.zip"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$asset" --clobber
+            gh release edit "$tag" \
+              --title "BluePeak Operator Latest" \
+              --notes "Latest validated BluePeak Operator preview. Source remains private."
+          else
+            gh release create "$tag" "$asset" \
+              --target "$GITHUB_SHA" \
+              --title "BluePeak Operator Latest" \
+              --notes "Latest validated BluePeak Operator preview. Source remains private."
+          fi
